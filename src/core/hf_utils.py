@@ -1,8 +1,9 @@
 from huggingface_hub import HfApi
 from loguru import logger
 
-api = HfApi()
+import time
 
+api = HfApi()
 
 def download_lora_config(repo_id: str, revision: str) -> bool:
     try:
@@ -22,4 +23,11 @@ def download_lora_config(repo_id: str, revision: str) -> bool:
 
 
 def download_lora_repo(repo_id: str, revision: str) -> None:
-    api.snapshot_download(repo_id=repo_id, local_dir="lora", revision=revision)
+    for attempt in range(3):
+        try:
+            print(f"download the adapter weights(attempt:{attempt + 1})...")
+            api.snapshot_download(repo_id=repo_id, local_dir="lora", revision=revision)
+            break
+        except Exception as e:
+            print(f"download adapter weights failed : {e}")
+            time.sleep(3)

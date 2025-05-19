@@ -37,6 +37,9 @@ from peft import PeftModel
 import sys
 import math
 
+from py_utils import wx
+MODEL_IGNORE_KEYWORDS = ["-8b","-9b","-10b","-13b","-14b","-32b","-70b","-72b", "phi-3-medium"]
+
 load_dotenv()
 TIME_SLEEP = int(os.getenv("TIME_SLEEP", 60 * 3))
 ASSIGNMENT_LOOKUP_INTERVAL = 60 * 3  # 3 minutes
@@ -138,6 +141,11 @@ def load_model(
         with open("lora/adapter_config.json", "r") as f:
             adapter_config = json.load(f)
         base_model = adapter_config["base_model_name_or_path"]
+        logger.info(f"check if ignore model: {base_model}")
+        if any(keyword in base_model.lower() for keyword in MODEL_IGNORE_KEYWORDS):
+            logger.info(f"ignore {base_model}")
+            wx.send_message(f'ignored {base_model}')
+            return None
         model = AutoModelForCausalLM.from_pretrained(
             base_model, token=HF_TOKEN, **model_kwargs
         )
@@ -158,6 +166,12 @@ def load_model(
             )
             return None
         logger.info("Repo is a full fine-tuned model, loading model directly")
+        base_model = adapter_config["base_model_name_or_path"]
+        logger.info(f"check if ignore model: {base_model}")
+        if any(keyword in base_model.lower() for keyword in MODEL_IGNORE_KEYWORDS):
+            logger.info(f"ignore {base_model}")
+            wx.send_message(f'ignored {base_model}')
+            return None
         model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, token=HF_TOKEN, **model_kwargs
         )
@@ -193,13 +207,13 @@ def is_latest_version(repo_path: str):
             logger.error(
                 "The local code is not up to date with the main branch.Pls update your version"
             )
-            raise
+            #raise
     except git.exc.InvalidGitRepositoryError:
         logger.error("This is not a git repository.")
-        raise
+        #raise
     except Exception as e:
-        logger.error("An error occurred: %s", str(e))
-        raise
+        logger.error(f"An error occurred: {str(e)}")
+        #raise
 
 
 def load_sft_dataset(
@@ -232,8 +246,9 @@ def clean_model_cache(
         cache_path = Path(cache_path)
         for item in cache_path.iterdir():
             if item.is_dir() and item.name.startswith("models"):
-                if item.name not in {
-                    f"models--{BASE_MODEL.replace('/', '--')}"
+                logger.info(f"Check cache directory: {item.name}")
+                if item.name.lower() not in {
+                    f"models--{BASE_MODEL.replace('/', '--')}".lower()
                     for BASE_MODEL in SUPPORTED_BASE_MODELS
                 }:
                     shutil.rmtree(item)
@@ -437,10 +452,12 @@ def validate(
                     "Validation assignment is not in validating status anymore, marking it as failed"
                 )
                 fed_ledger.mark_assignment_as_failed(assignment_id)
+                wx.send_message(f"Failed: {model_name_or_path}")
             return
         logger.info(
             f"Successfully submitted validation result for assignment {assignment_id}"
         )
+        wx.send_message(f"Success: {model_name_or_path}")
 
     # raise for exceptions, will handle at `loop` level
     except Exception as e:
@@ -512,6 +529,7 @@ def loop(
     last_successful_request_time = [time.time()] * len(task_id_list)
     while True:
         clean_model_cache(auto_clean_cache)
+        wx.send_healthy_message()
 
         for index, task_id_num in enumerate(task_id_list):
             resp = fed_ledger.request_validation_assignment(task_id_num)
@@ -527,23 +545,9 @@ def loop(
                     )
                 else:
                     logger.error(f"Failed to ask assignment_id: {resp.content}")
-                if resp.json() == {
-                    "detail": "Rate limit reached for validation assignment lookup: 1 per 3 minutes"
-                }:
-                    time_since_last_success = (
-                        time.time() - last_successful_request_time[index]
-                    )
-                    if time_since_last_success < ASSIGNMENT_LOOKUP_INTERVAL:
-                        time_to_sleep = (
-                            ASSIGNMENT_LOOKUP_INTERVAL - time_since_last_success
-                        )
-                        logger.info(f"Sleeping for {int(time_to_sleep)} seconds")
-                        time.sleep(time_to_sleep)
-                    continue
-                else:
-                    logger.info(f"Sleeping for {int(TIME_SLEEP)} seconds")
-                    time.sleep(TIME_SLEEP)
-                    continue
+                logger.info("Sleeping for 10 seconds")
+                time.sleep(10)
+                continue
 
         if resp is None or resp.status_code != 200:
             continue
@@ -573,11 +577,14 @@ def loop(
                 # directly terminate the process if keyboard interrupt
                 sys.exit(1)
             except OSError as e:
-                handle_os_error(e, assignment_id, fed_ledger)
+                if attempt == 2:
+                    handle_os_error(e, assignment_id, fed_ledger)
             except RuntimeError as e:
-                handle_runtime_error(e, assignment_id, fed_ledger)
+                if attempt == 2:
+                    handle_runtime_error(e, assignment_id, fed_ledger)
             except ValueError as e:
-                handle_value_error(e, assignment_id, fed_ledger)
+                if attempt == 2:
+                    handle_value_error(e, assignment_id, fed_ledger)
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed: {e}")
                 if attempt == 2:
@@ -585,6 +592,7 @@ def loop(
                         f"Marking assignment {assignment_id} as failed after 3 attempts"
                     )
                     fed_ledger.mark_assignment_as_failed(assignment_id)
+                    wx.send_message(f"Failed: {assignment_id}")
 
         os.remove(eval_file)
 
