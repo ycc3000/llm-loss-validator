@@ -592,7 +592,7 @@ def loop(
                         f"Marking assignment {assignment_id} as failed after 3 attempts"
                     )
                     fed_ledger.mark_assignment_as_failed(assignment_id)
-                    wx.send_message(f"Failed: {assignment_id}")
+                    wx.send_message(f"Failed: {e}")
 
         os.remove(eval_file)
 
