@@ -1,4 +1,5 @@
 import json
+import numbers
 import os
 import time
 import shutil
@@ -31,6 +32,12 @@ from core.exception import (
     handle_runtime_error,
     handle_value_error,
 )
+from core.loss import (
+    calculate_bpc_bppl_metrics,
+    get_token_byte_ratio,
+    calculate_bytes_and_tokens,
+)
+from core.log_utils import _log_summary_table
 from tenacity import retry, stop_after_attempt, wait_exponential
 from client.fed_ledger import FedLedger
 from peft import PeftModel
@@ -39,6 +46,7 @@ import math
 
 from py_utils import wx
 MODEL_IGNORE_KEYWORDS = ["-8b","-9b","-10b","-13b","-14b","-32b","-70b","-72b", "phi-3-medium"]
+
 
 load_dotenv()
 TIME_SLEEP = int(os.getenv("TIME_SLEEP", 60 * 3))
@@ -307,6 +315,14 @@ def validate(
 
     model = None
     eval_dataset = None
+    bpc_metrics_results = {
+        "bpc": float("inf"),
+        "bppl": float("inf"),
+        "nll_token_nats_total": float("nan"),
+        "nll_token_bits_total": float("nan"),
+    }
+    token_byte_ratio_value = float("inf")
+    eval_loss = float("nan")  # Initialize eval_loss
 
     try:
         fed_ledger = FedLedger(FLOCK_API_KEY)
@@ -394,6 +410,28 @@ def validate(
         eval_dataset = load_sft_dataset(
             eval_file, context_length, template_name=base_model, tokenizer=tokenizer
         )
+
+        total_bytes, total_target_tokens = calculate_bytes_and_tokens(
+            eval_dataset, tokenizer, logger
+        )
+
+        if total_bytes == 0:
+            logger.warning(
+                "Total bytes in the evaluation dataset is 0. Cannot calculate BPC. Check dataset processing."
+            )
+            eval_loss_to_submit = LOSS_FOR_MODEL_PARAMS_EXCEED
+        else:
+            logger.info(f"Total target bytes (B): {total_bytes}")
+            logger.info(f"Total target tokens (T): {total_target_tokens}")
+            token_byte_ratio_value = get_token_byte_ratio(
+                total_target_tokens, total_bytes
+            )
+            logger.info(f"Token/Byte ratio (T/B): {token_byte_ratio_value:.4f}")
+            if token_byte_ratio_value < 0.1:
+                logger.warning(
+                    f"Token/Byte ratio ({token_byte_ratio_value:.4f}) is unusually low. Potential manipulation detected."
+                )
+
         model = load_model(
             model_name_or_path, lora_only, revision, val_args, cached_lora
         )
@@ -428,19 +466,60 @@ def validate(
             data_collator=data_collator,
         )
 
+        logger.info("Starting evaluation...")
         eval_result = trainer.evaluate()
         eval_loss = eval_result["eval_loss"]
-        logger.info("evaluate result is %s" % str(eval_result))
+
+        logger.info("Raw evaluation result: %s" % str(eval_result))
+
+        if total_bytes > 0:
+            bpc_metrics_results = calculate_bpc_bppl_metrics(
+                eval_loss, total_target_tokens, total_bytes
+            )
+
+        is_bpc_valid = not math.isinf(bpc_metrics_results["bpc"])
+
+        _log_summary_table(
+            model_name_or_path=model_name_or_path,
+            eval_loss=eval_loss,
+            bpc_metrics=bpc_metrics_results,
+            token_byte_ratio=token_byte_ratio_value,
+            total_target_tokens=total_target_tokens,
+            total_bytes=total_bytes,
+            vocab_size=tokenizer.vocab_size,
+            model_params_m=(sum(p.numel() for p in model.parameters()) / 1e6)
+            if model
+            else float("nan"),
+        )
+
         if local_test:
-            logger.info("The model can be correctly validated by validators.")
+            logger.info(
+                "The model can be correctly validated by validators (raw loss)."
+            )
+            if not is_bpc_valid:  # If BPC is inf
+                logger.warning(
+                    "Could not calculate BPC/bPPL for local test due to zero bytes or invalid loss."
+                )
             return
-        # sometimes the loss might not be a valid float
-        if isinstance(eval_loss, float) and (
-            math.isnan(eval_loss) or math.isinf(eval_loss)
-        ):
-            eval_loss = LOSS_FOR_MODEL_PARAMS_EXCEED
+
+        eval_loss_to_submit = LOSS_FOR_MODEL_PARAMS_EXCEED  # Default to high loss
+
+        if is_bpc_valid:
+            eval_loss_to_submit = bpc_metrics_results["bpc"]
+        else:
+            if total_bytes == 0:
+                logger.error("Total bytes is 0, submitting high loss.")
+            elif (
+                not isinstance(eval_loss, numbers.Real)
+                or math.isnan(eval_loss)
+                or math.isinf(eval_loss)
+            ):
+                logger.error(f"Invalid eval_loss ({eval_loss}), submitting high loss.")
+
         resp = fed_ledger.submit_validation_result(
-            assignment_id=assignment_id, loss=eval_loss, gpu_type=gpu_type
+            assignment_id=assignment_id,
+            loss=eval_loss_to_submit,  # Submit BPC as loss
+            gpu_type=gpu_type,
         )
         # check response is 200
         if resp.status_code != 200:
@@ -455,11 +534,10 @@ def validate(
                 wx.send_message(f"Failed: {model_name_or_path}")
             return
         logger.info(
-            f"Successfully submitted validation result for assignment {assignment_id}"
+            f"Successfully submitted validation result (BPC: {eval_loss_to_submit}) for assignment {assignment_id}"
         )
         wx.send_message(f"Success: {model_name_or_path}")
 
-    # raise for exceptions, will handle at `loop` level
     except Exception as e:
         raise e
     finally:
