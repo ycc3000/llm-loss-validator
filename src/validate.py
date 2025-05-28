@@ -254,7 +254,7 @@ def clean_model_cache(
         cache_path = Path(cache_path)
         for item in cache_path.iterdir():
             if item.is_dir() and item.name.startswith("models"):
-                logger.info(f"Check cache directory: {item.name}")
+                #logger.info(f"Check cache directory: {item.name}")
                 if item.name.lower() not in {
                     f"models--{BASE_MODEL.replace('/', '--')}".lower()
                     for BASE_MODEL in SUPPORTED_BASE_MODELS
