@@ -612,23 +612,19 @@ def loop(
                 break
             else:
                 if resp.json() == {
-                    "detail": "No task submissions available to validate"
-                }:
-                    logger.info(
-                        "Failed to ask assignment_id: No task submissions available to validate"
-                    )
-                else:
-                    logger.error(f"Failed to ask assignment_id: {resp.content}")
-                if resp.json() == {
                     "detail": "Rate limit reached for validation assignment lookup: 1 per 3 minutes"
                 }:
+                    logger.info("Rate limit reached: 1 per 3 minutes")
                     logger.info("Sleeping for 15 seconds")
                     time.sleep(15)
-                    continue
                 else:
+                    if resp.json() == {"detail": "No task submissions available to validate"}:
+                        logger.info("No task submissions available to validate")
+                    else:
+                        logger.error(f"Failed to ask assignment_id: {resp.content}")
                     logger.info(f"Sleeping for {int(TIME_SLEEP)} seconds")
                     time.sleep(TIME_SLEEP)
-                    continue
+                continue
 
         if resp is None or resp.status_code != 200:
             continue
@@ -637,7 +633,7 @@ def loop(
         revision = resp["task_submission"]["data"].get("revision", "main")
         assignment_id = resp["id"]
 
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 ctx = click.Context(validate)
                 ctx.invoke(
@@ -658,13 +654,19 @@ def loop(
                 # directly terminate the process if keyboard interrupt
                 sys.exit(1)
             except OSError as e:
-                if attempt == 2:
+                logger.error(f"Attempt {attempt + 1} failed: {e}")
+                if attempt == 4:
+                    wx.send_message(f"Failed: {e}")
                     handle_os_error(e, assignment_id, fed_ledger)
             except RuntimeError as e:
+                logger.error(f"Attempt {attempt + 1} failed: {e}")
                 if attempt == 2:
+                    wx.send_message(f"Failed: {e}")
                     handle_runtime_error(e, assignment_id, fed_ledger)
             except ValueError as e:
+                logger.error(f"Attempt {attempt + 1} failed: {e}")
                 if attempt == 2:
+                    wx.send_message(f"Failed: {e}")
                     handle_value_error(e, assignment_id, fed_ledger)
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed: {e}")

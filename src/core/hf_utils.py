@@ -23,7 +23,7 @@ def download_lora_config(repo_id: str, revision: str) -> bool:
 
 
 def download_lora_repo(repo_id: str, revision: str) -> None:
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             print(f"download the adapter weights(attempt:{attempt + 1})...")
             api.snapshot_download(repo_id=repo_id, local_dir="lora", revision=revision)
