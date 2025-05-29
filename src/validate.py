@@ -43,20 +43,18 @@ from client.fed_ledger import FedLedger
 from peft import PeftModel
 import sys
 import math
-
 from py_utils import wx
-MODEL_IGNORE_KEYWORDS = ["-8b","-9b","-10b","-13b","-14b","-32b","-70b","-72b", "phi-3-medium"]
-
 
 load_dotenv()
-TIME_SLEEP = int(os.getenv("TIME_SLEEP", 60 * 3))
-ASSIGNMENT_LOOKUP_INTERVAL = 60 * 3  # 3 minutes
+TIME_SLEEP = int(os.getenv("TIME_SLEEP", 60))
+ASSIGNMENT_LOOKUP_INTERVAL = 60  # 1 minutes
 FLOCK_API_KEY = os.getenv("FLOCK_API_KEY")
 if FLOCK_API_KEY is None:
     raise ValueError("FLOCK_API_KEY is not set")
 LOSS_FOR_MODEL_PARAMS_EXCEED = 999.0
 HF_TOKEN = os.getenv("HF_TOKEN")
 IS_DOCKER_CONTAINER = os.getenv("IS_DOCKER_CONTAINER", False)
+MODEL_IGNORE_KEYWORDS = ["-8b","-9b","-10b","-13b","-14b","-32b","-70b","-72b", "phi-3-medium"]
 
 if not IS_DOCKER_CONTAINER:
     import git  # only import git in non-docker container environment because it is not installed in docker image
@@ -174,11 +172,10 @@ def load_model(
             )
             return None
         logger.info("Repo is a full fine-tuned model, loading model directly")
-        base_model = adapter_config["base_model_name_or_path"]
-        logger.info(f"check if ignore model: {base_model}")
+        logger.info(f"check if ignore model: {model_name_or_path}")
         if any(keyword in base_model.lower() for keyword in MODEL_IGNORE_KEYWORDS):
-            logger.info(f"ignore {base_model}")
-            wx.send_message(f'ignored {base_model}')
+            logger.info(f"ignore {model_name_or_path}")
+            wx.send_message(f'ignored {model_name_or_path}')
             return None
         model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, token=HF_TOKEN, **model_kwargs
@@ -254,9 +251,8 @@ def clean_model_cache(
         cache_path = Path(cache_path)
         for item in cache_path.iterdir():
             if item.is_dir() and item.name.startswith("models"):
-                #logger.info(f"Check cache directory: {item.name}")
-                if item.name.lower() not in {
-                    f"models--{BASE_MODEL.replace('/', '--')}".lower()
+                if item.name not in {
+                    f"models--{BASE_MODEL.replace('/', '--')}"
                     for BASE_MODEL in SUPPORTED_BASE_MODELS
                 }:
                     shutil.rmtree(item)
@@ -623,9 +619,16 @@ def loop(
                     )
                 else:
                     logger.error(f"Failed to ask assignment_id: {resp.content}")
-                logger.info("Sleeping for 10 seconds")
-                time.sleep(10)
-                continue
+                if resp.json() == {
+                    "detail": "Rate limit reached for validation assignment lookup: 1 per 3 minutes"
+                }:
+                    logger.info("Sleeping for 15 seconds")
+                    time.sleep(15)
+                    continue
+                else:
+                    logger.info(f"Sleeping for {int(TIME_SLEEP)} seconds")
+                    time.sleep(TIME_SLEEP)
+                    continue
 
         if resp is None or resp.status_code != 200:
             continue
