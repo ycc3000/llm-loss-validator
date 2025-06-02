@@ -614,15 +614,14 @@ def loop(
                 if resp.json() == {
                     "detail": "Rate limit reached for validation assignment lookup: 1 per 3 minutes"
                 }:
-                    logger.info("Rate limit reached: 1 per 3 minutes")
-                    logger.info("Sleeping for 15 seconds")
+                    print("Rate limit reached: 1 per 3 minutes, sleeping for 15 seconds", flush=True)
                     time.sleep(15)
                 else:
                     if resp.json() == {"detail": "No task submissions available to validate"}:
                         logger.info("No task submissions available to validate")
                     else:
                         logger.error(f"Failed to ask assignment_id: {resp.content}")
-                    logger.info(f"Sleeping for {int(TIME_SLEEP)} seconds")
+                    print(f"Sleeping for {int(TIME_SLEEP)} seconds", flush=True)
                     time.sleep(TIME_SLEEP)
                 continue
 

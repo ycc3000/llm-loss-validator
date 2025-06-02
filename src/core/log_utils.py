@@ -53,4 +53,4 @@ def _log_summary_table(
             value = value[: value_width - 3] + "..."
         print(f"{label:<{label_width}} | {value:<{value_width}}")
 
-    print("=" * total_width + "\n")
+    print("=" * total_width + "\n", flush=True)
