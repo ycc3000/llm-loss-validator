@@ -46,11 +46,11 @@ def _log_summary_table(
         + " Validation Summary "
         + "=" * ((total_width - 20) // 2)
     )
-    logger.info(f"\n{header}")
+    print(f"\n{header}", flush=True)
 
     for label, value in table_data.items():
         if label == "Model Name" and len(value) > value_width:
             value = value[: value_width - 3] + "..."
-        print(f"{label:<{label_width}} | {value:<{value_width}}")
+        print(f"{label:<{label_width}} | {value:<{value_width}}", flush=True)
 
     print("=" * total_width + "\n", flush=True)
