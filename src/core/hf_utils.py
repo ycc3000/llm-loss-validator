@@ -31,7 +31,6 @@ def download_lora_repo(repo_id: str, revision: str) -> None:
                 repo_id=repo_id,
                 local_dir="lora",
                 revision=revision,
-                resume_download=True,
                 allow_patterns=["*.bin", "*.safetensors", "*.json"]
             )
             break
