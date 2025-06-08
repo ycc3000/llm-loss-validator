@@ -1,6 +1,6 @@
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi,snapshot_download
 from loguru import logger
-
+import os
 import time
 
 api = HfApi()
@@ -23,10 +23,17 @@ def download_lora_config(repo_id: str, revision: str) -> bool:
 
 
 def download_lora_repo(repo_id: str, revision: str) -> None:
+    os.makedirs("lora", exist_ok=True)
     for attempt in range(5):
         try:
             print(f"download the adapter weights(attempt:{attempt + 1})...")
-            api.snapshot_download(repo_id=repo_id, local_dir="lora", revision=revision)
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir="lora",
+                revision=revision,
+                resume_download=True,
+                allow_patterns=["*.bin", "*.safetensors", "*.json"]
+            )
             break
         except Exception as e:
             print(f"download adapter weights failed : {e}")
