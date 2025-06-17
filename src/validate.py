@@ -152,6 +152,7 @@ def load_model(
             logger.info(f"ignore {base_model}")
             wx.send_message(f'ignored {base_model}')
             return None
+        logger.info(f"Loading model: {base_model}")
         model = AutoModelForCausalLM.from_pretrained(
             base_model, token=HF_TOKEN, **model_kwargs
         )
@@ -177,6 +178,7 @@ def load_model(
             logger.info(f"ignore {model_name_or_path}")
             wx.send_message(f'ignored {model_name_or_path}')
             return None
+        logger.info(f"Loading model: {model_name_or_path}")
         model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, token=HF_TOKEN, **model_kwargs
         )
