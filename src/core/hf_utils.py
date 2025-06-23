@@ -24,7 +24,7 @@ def download_lora_config(repo_id: str, revision: str) -> bool:
 
 def download_lora_repo(repo_id: str, revision: str) -> None:
     os.makedirs("lora", exist_ok=True)
-    for attempt in range(5):
+    for attempt in range(6):
         try:
             print(f"download the adapter weights(attempt:{attempt + 1})...")
             snapshot_download(
