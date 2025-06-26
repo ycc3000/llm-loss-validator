@@ -175,8 +175,8 @@ def load_model(
         logger.info("Repo is a full fine-tuned model, loading model directly")
         logger.info(f"check if ignore model: {model_name_or_path}")
         if any(keyword in base_model.lower() for keyword in MODEL_IGNORE_KEYWORDS):
-            logger.info(f"ignore {model_name_or_path}")
-            wx.send_message(f'ignored {model_name_or_path}')
+            logger.info(f"Ignore model: {model_name_or_path}")
+            wx.send_message(f'Ignored model: {model_name_or_path}')
             return None
         logger.info(f"Loading model: {model_name_or_path}")
         model = AutoModelForCausalLM.from_pretrained(
@@ -186,9 +186,16 @@ def load_model(
     if "output_router_logits" in model.config.to_dict():
         logger.info("set output_router_logits as True")
         model.config.output_router_logits = True
+    
+    memoryFootprint = model.get_memory_footprint() / (1024 * 1024 * 1024)
     logger.info(
-        f"memory footprint of model: {model.get_memory_footprint() / (1024 * 1024 * 1024)} GB"
+        f"Memory footprint of model: {memoryFootprint} GB"
     )
+
+    if memoryFootprint > 24:
+        logger.info("Memory footprint of model > 24 GB, ignore it")
+        wx.send_message(f"Ignored 24G+ Memory: {model_name_or_path}")
+        return None
 
     total = sum(p.numel() for p in model.parameters())
     logger.info("Total model params: %.2fM" % (total / 1e6))
