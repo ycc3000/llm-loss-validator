@@ -641,6 +641,8 @@ def loop(
         revision = resp["task_submission"]["data"].get("revision", "main")
         assignment_id = resp["id"]
 
+        logger.info(f"Successfully get assignment_id: {assignment_id}")
+
         for attempt in range(5):
             try:
                 ctx = click.Context(validate)
