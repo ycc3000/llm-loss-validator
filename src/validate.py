@@ -598,13 +598,13 @@ def loop(
 
     repo_path = Path(__file__).resolve().parent.parent
 
-    if not IS_DOCKER_CONTAINER:
-        is_latest_version(repo_path)
-    else:
-        logger.info("Skip checking the latest version in docker container")
-        logger.info(
-            "Please make sure you are using the latest version of the docker image."
-        )
+    #if not IS_DOCKER_CONTAINER:
+        #is_latest_version(repo_path)
+    #else:
+    #    logger.info("Skip checking the latest version in docker container")
+    #    logger.info(
+    #        "Please make sure you are using the latest version of the docker image."
+    #    )
 
     fed_ledger = FedLedger(FLOCK_API_KEY)
     task_id_list = task_id.split(",")
