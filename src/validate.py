@@ -338,6 +338,7 @@ def validate(
         tokenizer_model_path = model_name_or_path
 
         # Determine the correct tokenizer path, especially for LoRA models
+        logger.info(f"Downloading lora config: {model_name_or_path}")
         is_lora = download_lora_config(model_name_or_path, revision)
         cached_lora = is_lora
         adapter_config_path = Path("lora/adapter_config.json")

@@ -31,7 +31,8 @@ def download_lora_repo(repo_id: str, revision: str) -> None:
                 repo_id=repo_id,
                 local_dir="lora",
                 revision=revision,
-                allow_patterns=["*.bin", "*.safetensors", "*.json"]
+                allow_patterns=["*.bin", "*.safetensors", "*.json"],
+                max_workers=4
             )
             break
         except Exception as e:
