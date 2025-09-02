@@ -21,7 +21,6 @@ def download_lora_config(repo_id: str, revision: str) -> bool:
             raise  # Re-raise the exception if it's not related to the missing file
     return True
 
-
 def download_lora_repo(repo_id: str, revision: str) -> None:
     os.makedirs("lora", exist_ok=True)
     for attempt in range(6):
